@@ -1,0 +1,87 @@
+---
+title: "Aloha_Harvest_Mapping"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+library(sf)
+library(mapview)
+library(leaflet)
+```
+
+```{r}
+
+pickups <- read.csv("data/data-interns-export-2026-09-28-PICKUPS.xlsx - pickups.csv", skip = 11)
+
+```
+
+```{r}
+pickups_2 <- pickups |>
+  filter(Account.Name != "") |>
+  select(name = Account.Name,
+         route = Service.Resource..Name,
+         street = Billing.Street,
+         city = Billing.City,
+         zip = Billing.Zip.Postal.Code,
+         type = Organization.Type,
+         subtype = Organization.Subtype,
+         pounds = Actual.Poundage.Picked.Up) |>
+  mutate(city = str_to_title(city))
+
+head(pickups_2)
+```
+
+```{r}
+pickup_sites <- pickups_2 |>
+  filter(street != "") |>
+  group_by(name, street, city, zip, type) |>
+  summarise(total_pounds = sum(pounds),
+            visits = n())
+
+nrow(pickup_sites)
+arrange(pickup_sites, desc(total_pounds))
+```
+
+```{r}
+library(tidygeocoder)
+
+pickup_sites <- pickup_sites |>
+  ungroup() |>
+  mutate(address = paste(street, city, "HI", zip)) |>
+  geocode(address, method = "arcgis")
+
+write.csv(pickup_sites, "data/pickup_sites_geocoded.csv", row.names = FALSE)
+
+filter(pickup_sites, is.na(lat))
+```
+
+Not sure what to do after this lol
+
+```{r}
+library(leaflet)
+
+leaflet() |>
+  addProviderTiles("Esri.WorldStreetMap") |>
+  addCircleMarkers(lng = pickup_sites$long,
+                   lat = pickup_sites$lat,
+                   radius = sqrt(pickup_sites$total_pounds) / 20 + 2,
+                   color = "darkgreen",
+                   stroke = FALSE,
+                   fillOpacity = 0.6,
+                   popup = paste0(pickup_sites$name, "<br>",
+                                  pickup_sites$total_pounds, " lbs<br>",
+                                  pickup_sites$visits, " visits"))
+```
+
+Findings: 12% of pickups were 0 poundage
+
+```{r}
+
+summary(pickups_2$pounds)
+mean(pickups_2$pounds == 0)
+
+
+```
